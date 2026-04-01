@@ -3,7 +3,7 @@ const fs = require('fs');
 const https = require('https');
 const CLIENT_ID = '1488720287523541152';
 const GUILD_ID = '1458078510030786704';
-const GITHUB_RAW_URL = 'https://gist.githubusercontent.com/iwantteam0303-tech/60149702255f4787681e810e9587ffd9/raw/BeeBot';
+const GITHUB_RAW_URL = 'https://gist.githubusercontent.com/iwantteam0303-tech/raw/BeeBot';
 const client = new Client({
     intents: [GatewayIntentBits.Guilds]
 });
