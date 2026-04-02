@@ -25,8 +25,11 @@ const commands = [
     new SlashCommandBuilder().setName('할당').setDescription('디스코드 유저에게 식별이름을 할당합니다.')
         .addUserOption(opt => opt.setName('멘션').setDescription('대상 디스코드 유저').setRequired(true))
         .addStringOption(opt => opt.setName('유저네임').setDescription('할당할 로블록스 유저네임(식별이름)').setRequired(true)),
-    new SlashCommandBuilder().setName('재시작').setDescription('특정 계정 또는 전체(All) 크롬 브라우저를 재시작합니다.')
-        .addStringOption(opt => opt.setName('대상').setDescription('계정이름 또는 All').setRequired(true)),
+        new SlashCommandBuilder().setName('재시작').setDescription('특정 계정 또는 전체(All) 크롬 브라우저를 재시작합니다.')
+        .addStringOption(opt => opt.setName('대상').setDescription('계정이름 또는 All').setRequired(true))
+        .addBooleanOption(opt => opt.setName('로블록스종료').setDescription('실행 전 모든 로블록스 프로세스를 강제 종료할까요?').setRequired(true))
+        .addIntegerOption(opt => opt.setName('매크로대기').setDescription('몇 초 후에 매크로를 실행할까요? (초 단위)').setRequired(true)),
+
 
     // 인게임 LBC 명령어
     new SlashCommandBuilder().setName('재접').setDescription('현재 할당된 계정을 게임 내에서 재접속시킵니다.'),
@@ -227,9 +230,11 @@ client.on('interactionCreate', (interaction) => {
         return;
     }
 
-        // 3. 재시작 (봇 폴더의 macro.ahk를 20초 뒤 실행)
+          // 3. 재시작 (로블록스 종료 여부 및 매크로 대기 시간 옵션 적용)
     if (cmd === '재시작') {
         const target = interaction.options.getString('대상');
+        const shouldKill = interaction.options.getBoolean('로블록스종료');
+        const macroDelaySec = interaction.options.getInteger('매크로대기');
         
         fs.readFile('settings.json', 'utf8', (err, data) => {
             if (err) return interaction.reply({ content: 'settings.json 파일을 찾을 수 없습니다.', ephemeral: true });
@@ -239,52 +244,67 @@ client.on('interactionCreate', (interaction) => {
             
             const link = settings.vip_link;
             const accounts = settings.accounts;
-            
-            // 봇이 실행 중인 현재 폴더의 macro.ahk 경로 설정
             const macroPath = path.join(process.cwd(), 'macro.ahk');
 
-            if (target.toLowerCase() === 'all') {
-                const names = Object.keys(accounts);
-                const delayMs = settings.delay || 2000;
-                
-                interaction.reply(`총 ${names.length}개의 계정을 재시작합니다. 모든 계정 실행 후 20초 뒤 매크로가 작동합니다.`).then(() => {
-                    names.forEach((name, index) => {
-                        const profile = accounts[name];
-                        const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
+            // 실행 로직을 함수로 분리 (중복 방지)
+            const proceedRestart = () => {
+                if (target.toLowerCase() === 'all') {
+                    const names = Object.keys(accounts);
+                    const delayMs = settings.delay || 2000;
+                    
+                    interaction.editReply(`모든 계정을 재시작합니다. ${macroDelaySec}초 뒤 매크로가 작동합니다.`).then(() => {
+                        names.forEach((name, index) => {
+                            const profile = accounts[name];
+                            const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
+                            setTimeout(() => {
+                                exec(commandStr, (execErr) => {
+                                    if (execErr) console.error(`[${name}] 실행 오류:`, execErr.message);
+                                });
+                            }, index * delayMs);
+                        });
+
+                        // (모든 계정 실행 시간) + (유저가 입력한 대기 시간) 후 매크로 실행
+                        const totalWaitTime = (names.length * delayMs) + (macroDelaySec * 1000);
                         setTimeout(() => {
-                            exec(commandStr, (execErr) => {
-                                if (execErr) console.error(`[${name}] 실행 오류:`, execErr.message);
+                            exec(`start "" "${macroPath}"`, (macroErr) => {
+                                if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
+                                else console.log('전체 계정 실행 후 지정 대기 완료 -> macro.ahk 실행 성공');
                             });
-                        }, index * delayMs);
+                        }, totalWaitTime);
                     });
+                } else {
+                    const profile = accounts[target];
+                    if (!profile) return interaction.editReply(`settings.json에서 '${target}' 계정을 찾을 수 없습니다.`);
+                    
+                    const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
+                    exec(commandStr, (execErr) => {
+                        if (execErr) return interaction.editReply(`실행 오류: ${execErr.message}`);
+                        interaction.editReply(`✅ '${target}' 계정 재접속 실행! ${macroDelaySec}초 뒤 매크로가 작동합니다.`);
 
-                    // 모든 계정 실행 명령을 내린 후, 마지막 계정 실행 시점으로부터 20초 뒤 매크로 실행
-                    const totalWaitTime = (names.length * delayMs) + 20000;
-                    setTimeout(() => {
-                        exec(`start "" "${macroPath}"`, (macroErr) => {
-                            if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
-                            else console.log('전체 계정 실행 완료 후 20초 대기 -> macro.ahk 실행 성공');
-                        });
-                    }, totalWaitTime);
-                });
-            } else {
-                const profile = accounts[target];
-                if (!profile) return interaction.reply({ content: `settings.json에서 '${target}' 계정을 찾을 수 없습니다.`, ephemeral: true });
-                
-                const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
-                exec(commandStr, (execErr) => {
-                    if (execErr) return interaction.reply(`실행 오류: ${execErr.message}`);
-                    interaction.reply(`✅ '${target}' 계정 재접속 명령 실행! 50년 뒤 매크로가 작동합니다.`);
+                        // 지정된 초만큼 대기 후 매크로 실행
+                        setTimeout(() => {
+                            exec(`start "" "${macroPath}"`, (macroErr) => {
+                                if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
+                                else console.log('단일 계정 실행 후 지정 대기 완료 -> macro.ahk 실행 성공');
+                            });
+                        }, macroDelaySec * 1000);
+                    });
+                }
+            };
 
-                    // 단일 계정 실행 후 20초 뒤에 매크로 실행
-                    setTimeout(() => {
-                        exec(`start "" "${macroPath}"`, (macroErr) => {
-                            if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
-                            else console.log('단일 계정 실행 완료 후 20초 대기 -> macro.ahk 실행 성공');
-                        });
-                    }, 50000);
-                });
-            }
+            // 명령어 응답 시작
+            interaction.reply('명령을 처리 중입니다...').then(() => {
+                if (shouldKill) {
+                    // 로블록스 강제 종료 실행
+                    exec('taskkill /f /im RobloxPlayerBeta.exe', (killErr) => {
+                        if (killErr) console.log('종료할 로블록스 프로세스가 없거나 오류가 발생했습니다. (무시하고 진행)');
+                        // 종료 명령 후 1초 정도 여유를 주고 재시작 진행
+                        setTimeout(proceedRestart, 1000);
+                    });
+                } else {
+                    proceedRestart();
+                }
+            });
         });
         return;
     }
