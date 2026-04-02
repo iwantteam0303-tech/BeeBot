@@ -120,7 +120,7 @@ function sendLbcRequest(username, commandName, options = {}, maxAttempts = 2) {
 function getAssignedUsername(discordId) {
     return new Promise((resolve, reject) => {
         fs.readFile('Users.json', 'utf8', (err, data) => {
-            if (err) return reject('할당된 계정이 없습니다.'); // Users.json이 아예 없거나 읽을 수 없는 경우
+            if (err) return reject('할당된 계정이 없습니다.'); 
             
             const users = JSON.parse(data);
             if (users[discordId]) {
@@ -133,14 +133,17 @@ function getAssignedUsername(discordId) {
 }
 
 // ----------------------------------------------------
-// 봇 초기화 및 로그인
+// 봇 초기화 및 로그인 (🔥 정규식 적용으로 토큰 에러 방지 🔥)
 // ----------------------------------------------------
 fs.readFile('token.txt', 'utf8', (err, data) => {
     if (err) {
         console.error('token.txt 파일을 읽을 수 없습니다.');
         return;
     }
-    const TOKEN = data.trim();
+    
+    // 보이지 않는 유령 문자, 띄어쓰기, 줄바꿈을 완벽하게 제거
+    const TOKEN = data.replace(/[^a-zA-Z0-9_.-]/g, '');
+    
     const rest = new REST({ version: '10' }).setToken(TOKEN);
 
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands })
@@ -213,7 +216,7 @@ client.on('interactionCreate', (interaction) => {
         return;
     }
 
-    // 3. 재시작 (과거 재실행/일괄재실행 통합)
+    // 3. 재시작
     if (cmd === '재시작') {
         const target = interaction.options.getString('대상');
         
@@ -256,20 +259,18 @@ client.on('interactionCreate', (interaction) => {
     }
 
     // ====================================================
-    // 아래 명령어들은 LBC 통신이 필요하므로 동시 실행 제한 적용
+    // LBC 통신 명령어 (동시 실행 제한)
     // ====================================================
     if (activeUsers.has(interaction.user.id)) {
         return interaction.reply({ content: '⚠️ 이미 진행 중인 명령어가 있습니다. 이전 요청이 끝날 때까지 기다려 주세요.', ephemeral: true });
     }
 
-    // LBC 요청을 위한 기초 유저네임 체크
     getAssignedUsername(interaction.user.id)
         .then(username => {
-            // 통과 시 락 걸기
             activeUsers.add(interaction.user.id);
             interaction.reply({ content: '요청을 게임으로 전송 중입니다...' }).then(() => {
                 
-                // --- 4. 재접 명령어 ---
+                // 4. 재접
                 if (cmd === '재접') {
                     sendLbcRequest(username, 'Rejoin', {}, 2)
                         .then(content => {
@@ -283,19 +284,17 @@ client.on('interactionCreate', (interaction) => {
                         });
                 }
 
-                // --- 5. 벌집 명령어 ---
+                // 5. 벌집
                 if (cmd === '벌집') {
                     sendLbcRequest(username, 'GetHive', {}, 2)
                         .then(content => {
-                            const hiveData = content.HiveData; // Array of {Cell, Name, Level}
+                            const hiveData = content.HiveData;
                             let gridText = '';
                             
-                            // Y: 10(Top) ~ 1(Bottom), X: 1(Left) ~ 5(Right)
                             for (let y = 10; y >= 1; y--) {
                                 let rowArr = [];
                                 for (let x = 1; x <= 5; x++) {
                                     const targetCell = `${x},${y}`;
-                                    // 해당 좌표를 가진 셀 데이터 찾기
                                     const found = hiveData.find(c => c.Cell === targetCell);
                                     if (found) {
                                         rowArr.push(`${found.Name}(Lvl:${found.Level})`);
@@ -320,7 +319,7 @@ client.on('interactionCreate', (interaction) => {
                         });
                 }
 
-                // --- 6. 뽑기 명령어 ---
+                // 6. 뽑기
                 if (cmd === '뽑기') {
                     const reqOptions = {
                         CON: interaction.options.getString('con'),
@@ -334,7 +333,6 @@ client.on('interactionCreate', (interaction) => {
                         .then(content => {
                             const cells = content.Cells;
 
-                            // 셀이 여러 개인 경우
                             if (cells.length > 1) {
                                 const embed = new EmbedBuilder()
                                     .setColor(0xFFFF00)
@@ -342,7 +340,6 @@ client.on('interactionCreate', (interaction) => {
                                 
                                 const row = new ActionRowBuilder();
                                 cells.forEach((cellData, idx) => {
-                                    // 디스코드 버튼은 한 Row당 최대 5개이므로, 이 예제에서는 최대 5개까지만 버튼 생성
                                     if (idx < 5) {
                                         row.addComponents(
                                             new ButtonBuilder()
@@ -359,7 +356,7 @@ client.on('interactionCreate', (interaction) => {
 
                                     collector.on('collect', i => {
                                         const chosenCell = i.customId.replace('sel_', '');
-                                        reqOptions.CON = chosenCell; // 덮어쓰고 다시 자기자신을 재귀적 호출처럼 넘김
+                                        reqOptions.CON = chosenCell; 
                                         i.deferUpdate().then(() => {
                                             collector.stop();
                                             executeSingleRoll(interaction, username, reqOptions, cells.find(c => c.Cell === chosenCell));
@@ -374,7 +371,6 @@ client.on('interactionCreate', (interaction) => {
                                     });
                                 });
                             } else {
-                                // 셀이 1개인 경우 바로 뽑기 대기창 진입
                                 executeSingleRoll(interaction, username, reqOptions, cells[0]);
                             }
                         })
@@ -386,7 +382,6 @@ client.on('interactionCreate', (interaction) => {
             });
         })
         .catch(err => {
-            // 할당된 계정이 없을 때
             interaction.reply({ content: `<@${interaction.user.id}> 할당된 계정이 없습니다.`, ephemeral: true });
         });
 });
@@ -408,7 +403,7 @@ function executeSingleRoll(interaction, username, reqOptions, cellData) {
 
     interaction.editReply({ content: '', embeds: [embed], components: [row] }).then(msg => {
         const filter = i => i.user.id === interaction.user.id;
-        const collector = msg.createMessageComponentCollector({ filter, time: 300000 }); // 5분 대기
+        const collector = msg.createMessageComponentCollector({ filter, time: 300000 }); 
 
         collector.on('collect', i => {
             if (i.customId === 'roll_stop') {
@@ -419,14 +414,11 @@ function executeSingleRoll(interaction, username, reqOptions, cellData) {
                 });
             } else if (i.customId === 'roll_start') {
                 i.deferUpdate().then(() => {
-                    // 뽑기 버튼 비활성화 (처리 중)
                     row.components[0].setDisabled(true);
                     row.components[1].setDisabled(true);
                     interaction.editReply({ content: '뽑기 요청 중... 대기 횟수 8회(40초) 소요 가능', components: [row] }).then(() => {
-                        // 뽑기 실행 (명령어 이름 Roll, 대기수 8회 지정)
                         sendLbcRequest(username, 'Roll', reqOptions, 8)
                             .then(content => {
-                                // 롤 성공 시 데이터 갱신 후 다시 그리기
                                 const newCellData = content.Cells[0] || content.Cells;
                                 collector.stop('rerolled');
                                 executeSingleRoll(interaction, username, reqOptions, newCellData);
