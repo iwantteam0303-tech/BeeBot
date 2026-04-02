@@ -227,7 +227,7 @@ client.on('interactionCreate', (interaction) => {
         return;
     }
 
-    // 3. 재시작
+        // 3. 재시작 (봇 폴더의 macro.ahk를 20초 뒤 실행)
     if (cmd === '재시작') {
         const target = interaction.options.getString('대상');
         
@@ -239,12 +239,15 @@ client.on('interactionCreate', (interaction) => {
             
             const link = settings.vip_link;
             const accounts = settings.accounts;
+            
+            // 봇이 실행 중인 현재 폴더의 macro.ahk 경로 설정
+            const macroPath = path.join(process.cwd(), 'macro.ahk');
 
             if (target.toLowerCase() === 'all') {
                 const names = Object.keys(accounts);
                 const delayMs = settings.delay || 2000;
                 
-                interaction.reply(`총 ${names.length}개의 계정을 재시작합니다.`).then(() => {
+                interaction.reply(`총 ${names.length}개의 계정을 재시작합니다. 모든 계정 실행 후 20초 뒤 매크로가 작동합니다.`).then(() => {
                     names.forEach((name, index) => {
                         const profile = accounts[name];
                         const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
@@ -254,6 +257,15 @@ client.on('interactionCreate', (interaction) => {
                             });
                         }, index * delayMs);
                     });
+
+                    // 모든 계정 실행 명령을 내린 후, 마지막 계정 실행 시점으로부터 20초 뒤 매크로 실행
+                    const totalWaitTime = (names.length * delayMs) + 20000;
+                    setTimeout(() => {
+                        exec(`start "" "${macroPath}"`, (macroErr) => {
+                            if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
+                            else console.log('전체 계정 실행 완료 후 20초 대기 -> macro.ahk 실행 성공');
+                        });
+                    }, totalWaitTime);
                 });
             } else {
                 const profile = accounts[target];
@@ -262,12 +274,21 @@ client.on('interactionCreate', (interaction) => {
                 const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
                 exec(commandStr, (execErr) => {
                     if (execErr) return interaction.reply(`실행 오류: ${execErr.message}`);
-                    interaction.reply(`✅ '${target}' 계정 재접속 명령을 실행했습니다.`);
+                    interaction.reply(`✅ '${target}' 계정 재접속 명령 실행! 20초 뒤 매크로가 작동합니다.`);
+
+                    // 단일 계정 실행 후 20초 뒤에 매크로 실행
+                    setTimeout(() => {
+                        exec(`start "" "${macroPath}"`, (macroErr) => {
+                            if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
+                            else console.log('단일 계정 실행 완료 후 20초 대기 -> macro.ahk 실행 성공');
+                        });
+                    }, 20000);
                 });
             }
         });
         return;
     }
+
 
     // ====================================================
     // LBC 통신 명령어 (동시 실행 제한)
