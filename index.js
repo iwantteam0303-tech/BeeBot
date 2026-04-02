@@ -133,7 +133,8 @@ function getAssignedUsername(discordId) {
 }
 
 // ----------------------------------------------------
-// 봇 초기화 및 로그인 (🔥 정규식 적용으로 토큰 에러 방지 🔥)
+// ----------------------------------------------------
+// 봇 초기화 및 로그인 (🔥 정규식 적용 및 토큰 디버깅 출력 🔥)
 // ----------------------------------------------------
 fs.readFile('token.txt', 'utf8', (err, data) => {
     if (err) {
@@ -144,6 +145,15 @@ fs.readFile('token.txt', 'utf8', (err, data) => {
     // 보이지 않는 유령 문자, 띄어쓰기, 줄바꿈을 완벽하게 제거
     const TOKEN = data.replace(/[^a-zA-Z0-9_.-]/g, '');
     
+    // ==========================================
+    // 여기서 start.bat 검은 창에 토큰을 출력합니다!
+    // ==========================================
+    console.log("=====================================");
+    console.log("원본 데이터: [" + data + "]");
+    console.log("정제된 토큰: [" + TOKEN + "]");
+    console.log("토큰 길이: " + TOKEN.length + "글자");
+    console.log("=====================================");
+    
     const rest = new REST({ version: '10' }).setToken(TOKEN);
 
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands })
@@ -152,6 +162,7 @@ fs.readFile('token.txt', 'utf8', (err, data) => {
 
     client.login(TOKEN).catch(console.error);
 });
+
 
 client.on('ready', () => {
     console.log(`${client.user.tag} 구동 준비 완료.`);
