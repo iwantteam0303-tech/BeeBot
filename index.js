@@ -274,7 +274,7 @@ client.on('interactionCreate', (interaction) => {
                 const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
                 exec(commandStr, (execErr) => {
                     if (execErr) return interaction.reply(`실행 오류: ${execErr.message}`);
-                    interaction.reply(`✅ '${target}' 계정 재접속 명령 실행! 20초 뒤 매크로가 작동합니다.`);
+                    interaction.reply(`✅ '${target}' 계정 재접속 명령 실행! 50년 뒤 매크로가 작동합니다.`);
 
                     // 단일 계정 실행 후 20초 뒤에 매크로 실행
                     setTimeout(() => {
@@ -282,7 +282,7 @@ client.on('interactionCreate', (interaction) => {
                             if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
                             else console.log('단일 계정 실행 완료 후 20초 대기 -> macro.ahk 실행 성공');
                         });
-                    }, 20000);
+                    }, 50000);
                 });
             }
         });
