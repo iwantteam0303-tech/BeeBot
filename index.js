@@ -1,4 +1,5 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
@@ -25,10 +26,18 @@ const commands = [
     new SlashCommandBuilder().setName('할당').setDescription('디스코드 유저에게 식별이름을 할당합니다.')
         .addUserOption(opt => opt.setName('멘션').setDescription('대상 디스코드 유저').setRequired(true))
         .addStringOption(opt => opt.setName('유저네임').setDescription('할당할 로블록스 유저네임(식별이름)').setRequired(true)),
-        new SlashCommandBuilder().setName('재시작').setDescription('특정 계정 또는 전체(All) 크롬 브라우저를 재시작합니다.')
+    
+    new SlashCommandBuilder().setName('재시작').setDescription('특정 계정 또는 전체(All) 크롬 브라우저를 재시작합니다.')
         .addStringOption(opt => opt.setName('대상').setDescription('계정이름 또는 All').setRequired(true))
         .addBooleanOption(opt => opt.setName('로블록스종료').setDescription('실행 전 모든 로블록스 프로세스를 강제 종료할까요?').setRequired(true))
         .addIntegerOption(opt => opt.setName('매크로대기').setDescription('몇 초 후에 매크로를 실행할까요? (초 단위)').setRequired(true)),
+
+    // 컴퓨터 자체를 재시작하는 명령어 (관리자 전용)
+    new SlashCommandBuilder().setName('컴퓨터재시작').setDescription('컴퓨터를 즉시 재시작합니다. (관리자 전용)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    // 인게임 LBC 명령어 및 미구현 명령어는 기존과 동일하게 유지...
+
 
 
     // 인게임 LBC 명령어
@@ -230,7 +239,7 @@ client.on('interactionCreate', (interaction) => {
         return;
     }
 
-          // 3. 재시작 (로블록스 종료 여부 및 매크로 대기 시간 옵션 적용)
+      // 3. 재시작 (순차 실행 로직 강화)
     if (cmd === '재시작') {
         const target = interaction.options.getString('대상');
         const shouldKill = interaction.options.getBoolean('로블록스종료');
@@ -240,71 +249,83 @@ client.on('interactionCreate', (interaction) => {
             if (err) return interaction.reply({ content: 'settings.json 파일을 찾을 수 없습니다.', ephemeral: true });
             
             const settings = JSON.parse(data);
-            if (!settings.vip_link) return interaction.reply({ content: 'settings.json에 vip_link 항목을 설정해 주세요!', ephemeral: true });
-            
             const link = settings.vip_link;
             const accounts = settings.accounts;
             const macroPath = path.join(process.cwd(), 'macro.ahk');
 
-            // 실행 로직을 함수로 분리 (중복 방지)
-            const proceedRestart = () => {
-                if (target.toLowerCase() === 'all') {
-                    const names = Object.keys(accounts);
-                    const delayMs = settings.delay || 2000;
-                    
-                    interaction.editReply(`모든 계정을 재시작합니다. ${macroDelaySec}초 뒤 매크로가 작동합니다.`).then(() => {
-                        names.forEach((name, index) => {
-                            const profile = accounts[name];
-                            const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
-                            setTimeout(() => {
-                                exec(commandStr, (execErr) => {
-                                    if (execErr) console.error(`[${name}] 실행 오류:`, execErr.message);
-                                });
-                            }, index * delayMs);
-                        });
+            if (!link) return interaction.reply({ content: 'settings.json에 vip_link가 없습니다.', ephemeral: true });
 
-                        // (모든 계정 실행 시간) + (유저가 입력한 대기 시간) 후 매크로 실행
-                        const totalWaitTime = (names.length * delayMs) + (macroDelaySec * 1000);
-                        setTimeout(() => {
-                            exec(`start "" "${macroPath}"`, (macroErr) => {
-                                if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
-                                else console.log('전체 계정 실행 후 지정 대기 완료 -> macro.ahk 실행 성공');
-                            });
-                        }, totalWaitTime);
-                    });
-                } else {
-                    const profile = accounts[target];
-                    if (!profile) return interaction.editReply(`settings.json에서 '${target}' 계정을 찾을 수 없습니다.`);
-                    
-                    const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
-                    exec(commandStr, (execErr) => {
-                        if (execErr) return interaction.editReply(`실행 오류: ${execErr.message}`);
-                        interaction.editReply(`✅ '${target}' 계정 재접속 실행! ${macroDelaySec}초 뒤 매크로가 작동합니다.`);
-
-                        // 지정된 초만큼 대기 후 매크로 실행
-                        setTimeout(() => {
-                            exec(`start "" "${macroPath}"`, (macroErr) => {
-                                if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
-                                else console.log('단일 계정 실행 후 지정 대기 완료 -> macro.ahk 실행 성공');
-                            });
-                        }, macroDelaySec * 1000);
-                    });
+            // 순차 실행용 재귀 함수
+            const runSequential = (names, index) => {
+                if (index >= names.length) {
+                    return interaction.editReply(`✅ 모든 계정(${names.length}개)의 순차 재시작 및 매크로 실행이 완료되었습니다.`);
                 }
+
+                const name = names[index];
+                const profile = accounts[name];
+                const commandStr = `start "" chrome --profile-directory="${profile}" "${link}"`;
+
+                interaction.editReply(`[${index + 1}/${names.length}] '${name}' 계정 실행 중... (${macroDelaySec}초 후 매크로)` );
+
+                // 크롬 실행
+                exec(commandStr, (execErr) => {
+                    if (execErr) console.error(`[${name}] 실행 오류:`, execErr.message);
+
+                    // 유저가 설정한 대기 시간 후 매크로 실행
+                    setTimeout(() => {
+                        exec(`start "" "${macroPath}"`, (macroErr) => {
+                            if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
+                            
+                            // 매크로 실행 후 다음 계정으로 넘어가기 전 3초간 추가 여유를 둠
+                            setTimeout(() => {
+                                runSequential(names, index + 1);
+                            }, 3000);
+                        });
+                    }, macroDelaySec * 1000);
+                });
             };
 
-            // 명령어 응답 시작
-            interaction.reply('명령을 처리 중입니다...').then(() => {
+            interaction.reply('명령 처리를 시작합니다...').then(() => {
+                // 로블록스 종료 여부 체크
                 if (shouldKill) {
-                    // 로블록스 강제 종료 실행
-                    exec('taskkill /f /im RobloxPlayerBeta.exe', (killErr) => {
-                        if (killErr) console.log('종료할 로블록스 프로세스가 없거나 오류가 발생했습니다. (무시하고 진행)');
-                        // 종료 명령 후 1초 정도 여유를 주고 재시작 진행
-                        setTimeout(proceedRestart, 1000);
+                    exec('taskkill /f /im RobloxPlayerBeta.exe', () => {
+                        // 종료 후 2초 대기 후 시작
+                        setTimeout(() => {
+                            if (target.toLowerCase() === 'all') {
+                                runSequential(Object.keys(accounts), 0);
+                            } else {
+                                runSequential([target], 0);
+                            }
+                        }, 2000);
                     });
                 } else {
-                    proceedRestart();
+                    if (target.toLowerCase() === 'all') {
+                        runSequential(Object.keys(accounts), 0);
+                    } else {
+                        runSequential([target], 0);
+                    }
                 }
             });
+        });
+        return;
+    }
+
+    // 4. 컴퓨터 재시작 명령어 (시스템 종료 명령)
+    if (cmd === '컴퓨터재시작') {
+        // 코드 레벨에서도 관리자 권한 한 번 더 확인
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.reply({ content: '❌ 이 명령어는 서버 관리자만 사용할 수 있습니다.', ephemeral: true });
+        }
+
+        interaction.reply('⚠️ 5초 후 컴퓨터를 재시작합니다. 모든 연결이 끊어집니다.').then(() => {
+            setTimeout(() => {
+                // 윈도우 재시작 명령어 실행 (관리자 권한 필수)
+                exec('shutdown /r /t 0', (err) => {
+                    if (err) {
+                        interaction.editReply(`❌ 재시작 실패: ${err.message}`);
+                    }
+                });
+            }, 5000);
         });
         return;
     }
