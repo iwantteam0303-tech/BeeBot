@@ -330,7 +330,8 @@ client.on('interactionCreate', (interaction) => {
             return interaction.reply({ content: '❌ 이 명령어는 서버 관리자만 사용할 수 있습니다.', ephemeral: true });
         }
         interaction.reply('⚠️ 5초 후 컴퓨터를 재시작합니다.').then(() => {
-            setTimeout(() => { exec('shutdown /r /t 0'); }, 5000);
+            setTimeout(() => { exec('shutdown /r /f /t 0
+'); }, 5000);
         });
         return;
     }
