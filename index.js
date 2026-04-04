@@ -359,13 +359,13 @@ client.on('interactionCreate', (interaction) => {
                 if (cmd === '구미') return handleSimpleMessage(interaction, username, 'UseEgg', { CON: interaction.options.getString('con'), EggName: 'GummyBeeJelly', Amount: 1 });
                 if (cmd === '일반먹이') return handleSimpleMessage(interaction, username, '일반먹이', { CON: interaction.options.getString('con'), Amount: interaction.options.getInteger('amount'), Restocks: interaction.options.getString('restocks') });
                 
-                // 뽑기설정 (새로 추가됨)
+                // 뽑기설정 (Command Name 'SetJellyOption'으로 수정됨)
                 if (cmd === '뽑기설정') {
                     const reqOptions = {
                         UntilMythic: interaction.options.getBoolean('untilmythic'),
                         UntilLegendary: interaction.options.getBoolean('untillegendary')
                     };
-                    return handleSimpleMessage(interaction, username, '뽑기설정', reqOptions);
+                    return handleSimpleMessage(interaction, username, 'SetJellyOption', reqOptions);
                 }
 
                 // 5. 벌집 (5x10 그리드 출력)
