@@ -53,7 +53,9 @@ const commands = [
         .addStringOption(opt => opt.setName('itemname').setDescription('먹이 이름').setRequired(true))
         .addIntegerOption(opt => opt.setName('amount').setDescription('사용 수량').setRequired(true)),
     new SlashCommandBuilder().setName('스탯').setDescription('현재 스탯을 가져옵니다.'),
-    new SlashCommandBuilder().setName('뽑기설정').setDescription('뽑기 설정을 확인합니다.'),
+    new SlashCommandBuilder().setName('뽑기설정').setDescription('뽑기 설정을 확인 및 변경합니다.')
+        .addBooleanOption(opt => opt.setName('untilmythic').setDescription('신화까지 뽑기 (true/false)').setRequired(true))
+        .addBooleanOption(opt => opt.setName('untillegendary').setDescription('전설까지 뽑기 (true/false)').setRequired(true)),
     new SlashCommandBuilder().setName('몹스폰시간').setDescription('몹 스폰 시간을 확인합니다.'),
     new SlashCommandBuilder().setName('퀘스트보기').setDescription('현재 퀘스트를 확인합니다.')
 ].map(command => command.toJSON());
@@ -348,7 +350,6 @@ client.on('interactionCreate', (interaction) => {
                 // 단순 출력 계열
                 if (cmd === '재접') return handleSimpleMessage(interaction, username, 'Rejoin');
                 if (cmd === '스탯') return handleSimpleMessage(interaction, username, 'GetStats');
-                if (cmd === '뽑기설정') return handleSimpleMessage(interaction, username, '뽑기설정');
                 if (cmd === '몹스폰시간') return handleSimpleMessage(interaction, username, 'GetMobTime');
                 if (cmd === '퀘스트보기') return handleSimpleMessage(interaction, username, 'GetQuests');
 
@@ -357,6 +358,15 @@ client.on('interactionCreate', (interaction) => {
                 if (cmd === '먹이') return handleSimpleMessage(interaction, username, 'UseTreat', { ItemName: interaction.options.getString('itemname'), Amount: interaction.options.getInteger('amount') });
                 if (cmd === '구미') return handleSimpleMessage(interaction, username, 'UseEgg', { CON: interaction.options.getString('con'), EggName: 'GummyBeeJelly', Amount: 1 });
                 if (cmd === '일반먹이') return handleSimpleMessage(interaction, username, '일반먹이', { CON: interaction.options.getString('con'), Amount: interaction.options.getInteger('amount'), Restocks: interaction.options.getString('restocks') });
+                
+                // 뽑기설정 (새로 추가됨)
+                if (cmd === '뽑기설정') {
+                    const reqOptions = {
+                        UntilMythic: interaction.options.getBoolean('untilmythic'),
+                        UntilLegendary: interaction.options.getBoolean('untillegendary')
+                    };
+                    return handleSimpleMessage(interaction, username, '뽑기설정', reqOptions);
+                }
 
                 // 5. 벌집 (5x10 그리드 출력)
                 if (cmd === '벌집') {
