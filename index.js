@@ -1,5 +1,4 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
-
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
@@ -20,25 +19,17 @@ const activeUsers = new Set();
 // 명령어 정의
 // ----------------------------------------------------
 const commands = [
-    new SlashCommandBuilder().setName('업데이트').setDescription('깃허브에서 최신 코드를 가져와 봇을 재시작합니다.'),
-    
     // 관리자 명령어
+    new SlashCommandBuilder().setName('업데이트').setDescription('깃허브에서 최신 코드를 가져와 봇을 재시작합니다.'),
     new SlashCommandBuilder().setName('할당').setDescription('디스코드 유저에게 식별이름을 할당합니다.')
         .addUserOption(opt => opt.setName('멘션').setDescription('대상 디스코드 유저').setRequired(true))
         .addStringOption(opt => opt.setName('유저네임').setDescription('할당할 로블록스 유저네임(식별이름)').setRequired(true)),
-    
     new SlashCommandBuilder().setName('재시작').setDescription('특정 계정 또는 전체(All) 크롬 브라우저를 재시작합니다.')
         .addStringOption(opt => opt.setName('대상').setDescription('계정이름 또는 All').setRequired(true))
-        .addBooleanOption(opt => opt.setName('로블록스종료').setDescription('실행 전 모든 로블록스 프로세스를 강제 종료할까요?').setRequired(true))
-        .addIntegerOption(opt => opt.setName('매크로대기').setDescription('몇 초 후에 매크로를 실행할까요? (초 단위)').setRequired(true)),
-
-    // 컴퓨터 자체를 재시작하는 명령어 (관리자 전용)
+        .addBooleanOption(opt => opt.setName('로블록스종료').setDescription('실행 전 로블록스 프로세스 강제 종료').setRequired(true))
+        .addIntegerOption(opt => opt.setName('매크로대기').setDescription('매크로 실행 대기 시간(초)').setRequired(true)),
     new SlashCommandBuilder().setName('컴퓨터재시작').setDescription('컴퓨터를 즉시 재시작합니다. (관리자 전용)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-    // 인게임 LBC 명령어 및 미구현 명령어는 기존과 동일하게 유지...
-
-
 
     // 인게임 LBC 명령어
     new SlashCommandBuilder().setName('재접').setDescription('현재 할당된 계정을 게임 내에서 재접속시킵니다.'),
@@ -49,80 +40,77 @@ const commands = [
         .addStringOption(opt => opt.setName('gifted').setDescription('기프티드 벌 조건 (true/false)').setRequired(true))
         .addStringOption(opt => opt.setName('names').setDescription('벌 이름 조건 (쉼표로 구분)').setRequired(true))
         .addStringOption(opt => opt.setName('restocks').setDescription('리스톡 사용 조건').setRequired(true)),
-    
-    // 미구현 명령어들
-    new SlashCommandBuilder().setName('구미').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('일반먹이').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('꿀').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('구매').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('먹이').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('뽑기설정').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('몹스폰시간').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('퀘스트보기').setDescription('아직 기능이 추가되지 않은 명령어입니다.'),
-    new SlashCommandBuilder().setName('스탯').setDescription('아직 기능이 추가되지 않은 명령어입니다.')
+    new SlashCommandBuilder().setName('구미').setDescription('지정한 위치에 구미 벌 젤리를 사용합니다.')
+        .addStringOption(opt => opt.setName('con').setDescription('대상 셀 위치').setRequired(true)),
+    new SlashCommandBuilder().setName('일반먹이').setDescription('일반 먹이를 사용합니다. (미완성)')
+        .addStringOption(opt => opt.setName('con').setDescription('대상 셀 위치').setRequired(true))
+        .addIntegerOption(opt => opt.setName('amount').setDescription('수량').setRequired(true))
+        .addStringOption(opt => opt.setName('restocks').setDescription('리스톡 조건').setRequired(true)),
+    new SlashCommandBuilder().setName('구매').setDescription('아이템을 구매합니다.')
+        .addStringOption(opt => opt.setName('itemname').setDescription('아이템 이름').setRequired(true))
+        .addIntegerOption(opt => opt.setName('amount').setDescription('구매 수량').setRequired(true)),
+    new SlashCommandBuilder().setName('먹이').setDescription('특정 먹이를 사용합니다.')
+        .addStringOption(opt => opt.setName('itemname').setDescription('먹이 이름').setRequired(true))
+        .addIntegerOption(opt => opt.setName('amount').setDescription('사용 수량').setRequired(true)),
+    new SlashCommandBuilder().setName('스탯').setDescription('현재 스탯을 가져옵니다.'),
+    new SlashCommandBuilder().setName('뽑기설정').setDescription('뽑기 설정을 확인합니다.'),
+    new SlashCommandBuilder().setName('몹스폰시간').setDescription('몹 스폰 시간을 확인합니다.'),
+    new SlashCommandBuilder().setName('퀘스트보기').setDescription('현재 퀘스트를 확인합니다.')
 ].map(command => command.toJSON());
 
 // ----------------------------------------------------
 // 유틸리티 함수들
 // ----------------------------------------------------
 
-// LBC 파일 상태 체크 함수
+// LBC 파일 상태 체크 함수 (Node.js의 비동기 I/O를 사용하여 Lock 발생 안 함)
 function checkLbcStatus(filePath, attempt, maxAttempts, resolve, reject) {
     fs.readFile(filePath, 'utf8', (err, data) => {
-        if (err) return reject('상태를 확인하는 중 파일을 읽을 수 없게 되었습니다.');
+        if (err) return reject('상태를 확인하는 중 파일을 찾을 수 없습니다.');
 
-        const parsed = JSON.parse(data);
-
-        // 성공적으로 값을 반환받은 경우
-        if (parsed.status === 'return') {
-            return resolve(parsed.content);
+        try {
+            // Lua가 파일에 쓰는 도중 읽어서 JSON이 깨져있을 경우를 대비한 try-catch
+            const parsed = JSON.parse(data);
+            if (parsed.status === 'return') {
+                return resolve(parsed.content);
+            }
+        } catch (e) {
+            // 파싱 에러(작성 중)면 무시하고 대기 진행
         }
 
-        // 응답이 오지 않았으나 대기 횟수가 남은 경우
         if (attempt < maxAttempts) {
             setTimeout(() => {
                 checkLbcStatus(filePath, attempt + 1, maxAttempts, resolve, reject);
             }, 5000);
         } else {
-            // 최대 대기 횟수를 초과한 경우
-            reject('응답없음: 지정된 시간 내에 외부 프로그램의 응답이 없습니다.');
+            reject('응답없음');
         }
     });
 }
 
-// 공통 LBC 요청 함수 (maxAttempts: 대기 횟수, 1회당 5초)
+// 공통 LBC 요청 함수
 function sendLbcRequest(username, commandName, options = {}, maxAttempts = 2) {
     return new Promise((resolve, reject) => {
         fs.readFile('settings.json', 'utf8', (err, data) => {
             if (err) return reject('settings.json 파일을 읽을 수 없습니다.');
             
-            const settings = JSON.parse(data);
+            let settings;
+            try { settings = JSON.parse(data); } catch(e) { return reject('settings.json 문법 오류'); }
             if (!settings.workspace) return reject('settings.json에 workspace 경로가 없습니다.');
 
             const filePath = path.join(settings.workspace, `info_${username}.lbc`);
 
-            // 기존에 해당 파일이 있는지 먼저 검사
-            fs.access(filePath, fs.constants.F_OK, (accessErr) => {
-                if (accessErr) return reject(`파일을 찾을 수 없습니다. (경로: ${filePath})`);
+            const writeData = JSON.stringify({
+                status: "request",
+                content: { Command: commandName, ...options }
+            }, null, 2);
 
-                const requestContent = {
-                    Command: commandName,
-                    ...options
-                };
+            // 파일 덮어쓰기 (비동기라 즉시 닫힘)
+            fs.writeFile(filePath, writeData, 'utf8', (writeErr) => {
+                if (writeErr) return reject('요청 파일을 쓰는 중 오류가 발생했습니다.');
 
-                const writeData = JSON.stringify({
-                    status: "request",
-                    content: requestContent
-                }, null, 2);
-
-                fs.writeFile(filePath, writeData, 'utf8', (writeErr) => {
-                    if (writeErr) return reject('요청 파일을 쓰는 중 오류가 발생했습니다.');
-
-                    // 작성 성공 시 5초 후 첫 번째 체크 시작
-                    setTimeout(() => {
-                        checkLbcStatus(filePath, 1, maxAttempts, resolve, reject);
-                    }, 5000);
-                });
+                setTimeout(() => {
+                    checkLbcStatus(filePath, 1, maxAttempts, resolve, reject);
+                }, 5000);
             });
         });
     });
@@ -132,21 +120,91 @@ function sendLbcRequest(username, commandName, options = {}, maxAttempts = 2) {
 function getAssignedUsername(discordId) {
     return new Promise((resolve, reject) => {
         fs.readFile('Users.json', 'utf8', (err, data) => {
-            if (err) return reject('할당된 계정이 없습니다.'); 
-            
-            const users = JSON.parse(data);
-            if (users[discordId]) {
-                resolve(users[discordId]);
-            } else {
-                reject('할당된 계정이 없습니다.');
+            if (err) return reject(); 
+            try {
+                const users = JSON.parse(data);
+                if (users[discordId]) resolve(users[discordId]);
+                else reject();
+            } catch (e) {
+                reject();
+            }
+        });
+    });
+}
+
+// 단순 Message 출력 처리 함수
+function handleSimpleMessage(interaction, username, commandName, options = {}) {
+    sendLbcRequest(username, commandName, options)
+        .then(content => {
+            const msg = content.Message || JSON.stringify(content);
+            interaction.editReply({ content: msg });
+            activeUsers.delete(interaction.user.id);
+        })
+        .catch(errMsg => {
+            interaction.editReply({ content: errMsg });
+            activeUsers.delete(interaction.user.id);
+        });
+}
+
+// 단일 셀 뽑기 UI 및 로직 함수
+function executeSingleRoll(interaction, username, reqOptions, cellData) {
+    const contentText = `**셀 위치:** ${cellData.Cell}\n**이름:** ${cellData.Name}\n**레벨:** ${cellData.Level}\n\n**[정지 조건]**\nMythic: ${reqOptions.Mythic}\nGifted: ${reqOptions.Gifted}`;
+    
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('뽑기!')
+        .setDescription(contentText);
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('roll_start').setLabel('뽑기').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('roll_stop').setLabel('끝내기').setStyle(ButtonStyle.Danger)
+    );
+
+    interaction.editReply({ content: '', embeds: [embed], components: [row] }).then(msg => {
+        const filter = i => i.user.id === interaction.user.id;
+        const collector = msg.createMessageComponentCollector({ filter, time: 300000 }); 
+
+        collector.on('collect', i => {
+            if (i.customId === 'roll_stop') {
+                i.deferUpdate().then(() => {
+                    collector.stop('stopped');
+                    embed.setTitle('뽑기가 종료되었습니다.');
+                    interaction.editReply({ embeds: [embed], components: [] });
+                    activeUsers.delete(interaction.user.id);
+                });
+            } else if (i.customId === 'roll_start') {
+                i.deferUpdate().then(() => {
+                    row.components[0].setDisabled(true);
+                    row.components[1].setDisabled(true);
+                    interaction.editReply({ components: [row] }).then(() => {
+                        // 뽑기는 대기 횟수 8회
+                        sendLbcRequest(username, 'Roll', { CON: reqOptions.CON }, 8)
+                            .then(content => {
+                                const newCellData = Array.isArray(content.Cells) ? content.Cells[0] : content.Cells;
+                                collector.stop('rerolled');
+                                executeSingleRoll(interaction, username, reqOptions, newCellData);
+                            })
+                            .catch(errMsg => {
+                                collector.stop('error');
+                                interaction.editReply({ content: errMsg, components: [] });
+                                activeUsers.delete(interaction.user.id);
+                            });
+                    });
+                });
+            }
+        });
+
+        collector.on('end', (collected, reason) => {
+            if (reason === 'time') {
+                interaction.editReply({ content: '시간 초과로 뽑기 모드를 종료합니다.', components: [] });
+                activeUsers.delete(interaction.user.id);
             }
         });
     });
 }
 
 // ----------------------------------------------------
-// ----------------------------------------------------
-// 봇 초기화 및 로그인 (🔥 정규식 적용 및 토큰 디버깅 출력 🔥)
+// 봇 초기화 및 로그인
 // ----------------------------------------------------
 fs.readFile('token.txt', 'utf8', (err, data) => {
     if (err) {
@@ -154,18 +212,7 @@ fs.readFile('token.txt', 'utf8', (err, data) => {
         return;
     }
     
-    // 보이지 않는 유령 문자, 띄어쓰기, 줄바꿈을 완벽하게 제거
     const TOKEN = data.replace(/[^a-zA-Z0-9_.-]/g, '');
-    
-    // ==========================================
-    // 여기서 start.bat 검은 창에 토큰을 출력합니다!
-    // ==========================================
-    console.log("=====================================");
-    console.log("원본 데이터: [" + data + "]");
-    console.log("정제된 토큰: [" + TOKEN + "]");
-    console.log("토큰 길이: " + TOKEN.length + "글자");
-    console.log("=====================================");
-    
     const rest = new REST({ version: '10' }).setToken(TOKEN);
 
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands })
@@ -175,8 +222,7 @@ fs.readFile('token.txt', 'utf8', (err, data) => {
     client.login(TOKEN).catch(console.error);
 });
 
-
-client.on('ready', () => {
+client.on('clientReady', () => {
     console.log(`${client.user.tag} 구동 준비 완료.`);
 });
 
@@ -188,13 +234,7 @@ client.on('interactionCreate', (interaction) => {
 
     const cmd = interaction.commandName;
 
-    // 미구현 명령어 처리
-    const notImplemented = ['구미', '일반먹이', '꿀', '구매', '먹이', '뽑기설정', '몹스폰시간', '퀘스트보기', '스탯'];
-    if (notImplemented.includes(cmd)) {
-        return interaction.reply({ content: '지금은 아직 기능이 추가되지 않은 명령어입니다.', ephemeral: true });
-    }
-
-    // 1. 할당 명령어 (Users.json 생성/수정)
+    // 1. 관리자 명령어
     if (cmd === '할당') {
         const targetUser = interaction.options.getUser('멘션');
         const username = interaction.options.getString('유저네임');
@@ -202,23 +242,18 @@ client.on('interactionCreate', (interaction) => {
         fs.readFile('Users.json', 'utf8', (err, data) => {
             let users = {};
             if (!err && data) {
-                users = JSON.parse(data);
+                try { users = JSON.parse(data); } catch (e) {}
             }
             users[targetUser.id] = username;
             
             fs.writeFile('Users.json', JSON.stringify(users, null, 2), 'utf8', (writeErr) => {
                 if (writeErr) return interaction.reply({ content: '할당 저장 중 오류가 발생했습니다.', ephemeral: true });
-                
-                const embed = new EmbedBuilder()
-                    .setColor(0x00FF00)
-                    .setDescription(`<@${targetUser.id}> 님에게 로블록스 계정 \`${username}\`이(가) 할당되었습니다!`);
-                interaction.reply({ embeds: [embed] });
+                interaction.reply({ content: `<@${targetUser.id}> 님에게 로블록스 계정 \`${username}\`이(가) 할당되었습니다!` });
             });
         });
         return;
     }
 
-    // 2. 업데이트
     if (cmd === '업데이트') {
         interaction.reply('업데이트를 시작합니다...').then(() => {
             https.get(GITHUB_RAW_URL, (res) => {
@@ -239,8 +274,8 @@ client.on('interactionCreate', (interaction) => {
         return;
     }
 
-      // 3. 재시작 (순차 실행 로직 강화)
     if (cmd === '재시작') {
+        // 기존 재시작 로직 유지 (순차 실행)
         const target = interaction.options.getString('대상');
         const shouldKill = interaction.options.getBoolean('로블록스종료');
         const macroDelaySec = interaction.options.getInteger('매크로대기');
@@ -248,18 +283,17 @@ client.on('interactionCreate', (interaction) => {
         fs.readFile('settings.json', 'utf8', (err, data) => {
             if (err) return interaction.reply({ content: 'settings.json 파일을 찾을 수 없습니다.', ephemeral: true });
             
-            const settings = JSON.parse(data);
+            let settings;
+            try { settings = JSON.parse(data); } catch(e) { return interaction.reply({ content: 'settings.json 문법 오류', ephemeral: true }); }
+            
             const link = settings.vip_link;
             const accounts = settings.accounts;
             const macroPath = path.join(process.cwd(), 'macro.ahk');
 
             if (!link) return interaction.reply({ content: 'settings.json에 vip_link가 없습니다.', ephemeral: true });
 
-            // 순차 실행용 재귀 함수
             const runSequential = (names, index) => {
-                if (index >= names.length) {
-                    return interaction.editReply(`✅ 모든 계정(${names.length}개)의 순차 재시작 및 매크로 실행이 완료되었습니다.`);
-                }
+                if (index >= names.length) return interaction.editReply(`✅ 모든 계정(${names.length}개) 재시작 완료.`);
 
                 const name = names[index];
                 const profile = accounts[name];
@@ -267,75 +301,43 @@ client.on('interactionCreate', (interaction) => {
 
                 interaction.editReply(`[${index + 1}/${names.length}] '${name}' 계정 실행 중... (${macroDelaySec}초 후 매크로)` );
 
-                // 크롬 실행
                 exec(commandStr, (execErr) => {
-                    if (execErr) console.error(`[${name}] 실행 오류:`, execErr.message);
-
-                    // 유저가 설정한 대기 시간 후 매크로 실행
                     setTimeout(() => {
-                        exec(`start "" "${macroPath}"`, (macroErr) => {
-                            if (macroErr) console.error('매크로 실행 오류:', macroErr.message);
-                            
-                            // 매크로 실행 후 다음 계정으로 넘어가기 전 3초간 추가 여유를 둠
-                            setTimeout(() => {
-                                runSequential(names, index + 1);
-                            }, 3000);
+                        exec(`start "" "${macroPath}"`, () => {
+                            setTimeout(() => { runSequential(names, index + 1); }, 3000);
                         });
                     }, macroDelaySec * 1000);
                 });
             };
 
             interaction.reply('명령 처리를 시작합니다...').then(() => {
-                // 로블록스 종료 여부 체크
                 if (shouldKill) {
                     exec('taskkill /f /im RobloxPlayerBeta.exe', () => {
-                        // 종료 후 2초 대기 후 시작
-                        setTimeout(() => {
-                            if (target.toLowerCase() === 'all') {
-                                runSequential(Object.keys(accounts), 0);
-                            } else {
-                                runSequential([target], 0);
-                            }
-                        }, 2000);
+                        setTimeout(() => { runSequential(target.toLowerCase() === 'all' ? Object.keys(accounts) : [target], 0); }, 2000);
                     });
                 } else {
-                    if (target.toLowerCase() === 'all') {
-                        runSequential(Object.keys(accounts), 0);
-                    } else {
-                        runSequential([target], 0);
-                    }
+                    runSequential(target.toLowerCase() === 'all' ? Object.keys(accounts) : [target], 0);
                 }
             });
         });
         return;
     }
 
-    // 4. 컴퓨터 재시작 명령어 (시스템 종료 명령)
     if (cmd === '컴퓨터재시작') {
-        // 코드 레벨에서도 관리자 권한 한 번 더 확인
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({ content: '❌ 이 명령어는 서버 관리자만 사용할 수 있습니다.', ephemeral: true });
         }
-
-        interaction.reply('⚠️ 5초 후 컴퓨터를 재시작합니다. 모든 연결이 끊어집니다.').then(() => {
-            setTimeout(() => {
-                // 윈도우 재시작 명령어 실행 (관리자 권한 필수)
-                exec('shutdown /r /t 0', (err) => {
-                    if (err) {
-                        interaction.editReply(`❌ 재시작 실패: ${err.message}`);
-                    }
-                });
-            }, 5000);
+        interaction.reply('⚠️ 5초 후 컴퓨터를 재시작합니다.').then(() => {
+            setTimeout(() => { exec('shutdown /r /t 0'); }, 5000);
         });
         return;
     }
 
-
     // ====================================================
-    // LBC 통신 명령어 (동시 실행 제한)
+    // 일반 게임 연동 명령어 (LBC)
     // ====================================================
     if (activeUsers.has(interaction.user.id)) {
-        return interaction.reply({ content: '⚠️ 이미 진행 중인 명령어가 있습니다. 이전 요청이 끝날 때까지 기다려 주세요.', ephemeral: true });
+        return interaction.reply({ content: '⚠️ 이미 진행 중인 명령어가 있습니다.', ephemeral: true });
     }
 
     getAssignedUsername(interaction.user.id)
@@ -343,27 +345,27 @@ client.on('interactionCreate', (interaction) => {
             activeUsers.add(interaction.user.id);
             interaction.reply({ content: '요청을 게임으로 전송 중입니다...' }).then(() => {
                 
-                // 4. 재접
-                if (cmd === '재접') {
-                    sendLbcRequest(username, 'Rejoin', {}, 2)
-                        .then(content => {
-                            const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('재접속 요청 성공').setDescription('게임 서버 재접속을 시작합니다.');
-                            interaction.editReply({ content: '', embeds: [embed] });
-                            activeUsers.delete(interaction.user.id);
-                        })
-                        .catch(errMsg => {
-                            interaction.editReply({ content: `❌ 오류: ${errMsg}` });
-                            activeUsers.delete(interaction.user.id);
-                        });
-                }
+                // 단순 출력 계열
+                if (cmd === '재접') return handleSimpleMessage(interaction, username, 'Rejoin');
+                if (cmd === '스탯') return handleSimpleMessage(interaction, username, 'GetStats');
+                if (cmd === '뽑기설정') return handleSimpleMessage(interaction, username, '뽑기설정');
+                if (cmd === '몹스폰시간') return handleSimpleMessage(interaction, username, 'GetMobTime');
+                if (cmd === '퀘스트보기') return handleSimpleMessage(interaction, username, 'GetQuests');
 
-                // 5. 벌집
+                // 옵션 매핑
+                if (cmd === '구매') return handleSimpleMessage(interaction, username, 'Purchase', { ItemName: interaction.options.getString('itemname'), Amount: interaction.options.getInteger('amount') });
+                if (cmd === '먹이') return handleSimpleMessage(interaction, username, 'UseTreat', { ItemName: interaction.options.getString('itemname'), Amount: interaction.options.getInteger('amount') });
+                if (cmd === '구미') return handleSimpleMessage(interaction, username, 'UseEgg', { CON: interaction.options.getString('con'), EggName: 'GummyBeeJelly', Amount: 1 });
+                if (cmd === '일반먹이') return handleSimpleMessage(interaction, username, '일반먹이', { CON: interaction.options.getString('con'), Amount: interaction.options.getInteger('amount'), Restocks: interaction.options.getString('restocks') });
+
+                // 5. 벌집 (5x10 그리드 출력)
                 if (cmd === '벌집') {
-                    sendLbcRequest(username, 'GetHive', {}, 2)
+                    sendLbcRequest(username, 'GetHive')
                         .then(content => {
-                            const hiveData = content.HiveData;
+                            const hiveData = content.HiveData || [];
                             let gridText = '';
                             
+                            // y=10이 위쪽, y=1이 아래쪽 (가장 왼쪽 아래가 1,1)
                             for (let y = 10; y >= 1; y--) {
                                 let rowArr = [];
                                 for (let x = 1; x <= 5; x++) {
@@ -378,16 +380,11 @@ client.on('interactionCreate', (interaction) => {
                                 gridText += rowArr.join(' | ') + '\n';
                             }
 
-                            const embed = new EmbedBuilder()
-                                .setColor(0xFFA500)
-                                .setTitle(`🐝 ${username} 님의 벌집 상태`)
-                                .setDescription(`\`\`\`\n${gridText}\n\`\`\``);
-                                
-                            interaction.editReply({ content: '', embeds: [embed] });
+                            interaction.editReply({ content: `\`\`\`\n${gridText}\n\`\`\`` });
                             activeUsers.delete(interaction.user.id);
                         })
                         .catch(errMsg => {
-                            interaction.editReply({ content: `❌ 오류: ${errMsg}` });
+                            interaction.editReply({ content: errMsg });
                             activeUsers.delete(interaction.user.id);
                         });
                 }
@@ -402,17 +399,17 @@ client.on('interactionCreate', (interaction) => {
                         Restocks: interaction.options.getString('restocks')
                     };
 
-                    sendLbcRequest(username, 'ReadyRoll', reqOptions, 2)
+                    sendLbcRequest(username, 'GetHive', { CON: reqOptions.CON })
                         .then(content => {
-                            const cells = content.Cells;
+                            const hiveData = content.HiveData || [];
 
-                            if (cells.length > 1) {
+                            if (hiveData.length > 1) {
                                 const embed = new EmbedBuilder()
                                     .setColor(0xFFFF00)
                                     .setTitle('해당하는 셀이 여러 개입니다. 어떤 걸 선택하시겠습니까?');
                                 
                                 const row = new ActionRowBuilder();
-                                cells.forEach((cellData, idx) => {
+                                hiveData.forEach((cellData, idx) => {
                                     if (idx < 5) {
                                         row.addComponents(
                                             new ButtonBuilder()
@@ -432,7 +429,7 @@ client.on('interactionCreate', (interaction) => {
                                         reqOptions.CON = chosenCell; 
                                         i.deferUpdate().then(() => {
                                             collector.stop();
-                                            executeSingleRoll(interaction, username, reqOptions, cells.find(c => c.Cell === chosenCell));
+                                            executeSingleRoll(interaction, username, reqOptions, hiveData.find(c => c.Cell === chosenCell));
                                         });
                                     });
 
@@ -443,74 +440,21 @@ client.on('interactionCreate', (interaction) => {
                                         }
                                     });
                                 });
+                            } else if (hiveData.length === 1) {
+                                executeSingleRoll(interaction, username, reqOptions, hiveData[0]);
                             } else {
-                                executeSingleRoll(interaction, username, reqOptions, cells[0]);
+                                interaction.editReply({ content: '조건에 맞는 셀을 찾을 수 없습니다.' });
+                                activeUsers.delete(interaction.user.id);
                             }
                         })
                         .catch(errMsg => {
-                            interaction.editReply({ content: `❌ 오류: ${errMsg}` });
+                            interaction.editReply({ content: errMsg });
                             activeUsers.delete(interaction.user.id);
                         });
                 }
             });
         })
-        .catch(err => {
+        .catch(() => {
             interaction.reply({ content: `<@${interaction.user.id}> 할당된 계정이 없습니다.`, ephemeral: true });
         });
 });
-
-// 단일 셀 뽑기 상호작용 함수
-function executeSingleRoll(interaction, username, reqOptions, cellData) {
-    const embed = new EmbedBuilder()
-        .setColor(0x00FF00)
-        .setTitle('🎲 뽑기 준비 완료!')
-        .addFields(
-            { name: '셀 정보', value: `위치: ${cellData.Cell}\n이름: ${cellData.Name}\n레벨: ${cellData.Level}`, inline: false },
-            { name: '정지 조건', value: `Mythic: ${reqOptions.Mythic}\nGifted: ${reqOptions.Gifted}`, inline: false }
-        );
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('roll_start').setLabel('뽑기').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('roll_stop').setLabel('끝내기').setStyle(ButtonStyle.Danger)
-    );
-
-    interaction.editReply({ content: '', embeds: [embed], components: [row] }).then(msg => {
-        const filter = i => i.user.id === interaction.user.id;
-        const collector = msg.createMessageComponentCollector({ filter, time: 300000 }); 
-
-        collector.on('collect', i => {
-            if (i.customId === 'roll_stop') {
-                i.deferUpdate().then(() => {
-                    collector.stop('stopped');
-                    interaction.editReply({ content: '뽑기를 종료했습니다.', components: [] });
-                    activeUsers.delete(interaction.user.id);
-                });
-            } else if (i.customId === 'roll_start') {
-                i.deferUpdate().then(() => {
-                    row.components[0].setDisabled(true);
-                    row.components[1].setDisabled(true);
-                    interaction.editReply({ content: '뽑기 요청 중... 대기 횟수 8회(40초) 소요 가능', components: [row] }).then(() => {
-                        sendLbcRequest(username, 'Roll', reqOptions, 8)
-                            .then(content => {
-                                const newCellData = content.Cells[0] || content.Cells;
-                                collector.stop('rerolled');
-                                executeSingleRoll(interaction, username, reqOptions, newCellData);
-                            })
-                            .catch(errMsg => {
-                                collector.stop('error');
-                                interaction.editReply({ content: `❌ 뽑기 오류: ${errMsg}`, components: [] });
-                                activeUsers.delete(interaction.user.id);
-                            });
-                    });
-                });
-            }
-        });
-
-        collector.on('end', (collected, reason) => {
-            if (reason === 'time') {
-                interaction.editReply({ content: '시간 초과로 뽑기 모드를 종료합니다.', components: [] });
-                activeUsers.delete(interaction.user.id);
-            }
-        });
-    });
-}
